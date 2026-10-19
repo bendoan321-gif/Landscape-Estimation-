@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Shorts Studio</title>
+<style>
+body{font-family:sans-serif;margin:20px;max-width:900px}
+.row{display:flex;gap:8px;align-items:center;margin:6px 0}
+.lib video{width:120px}.card{border:1px solid #ccc;padding:6px;margin:4px;display:inline-block}
+input[type=number]{width:70px}
+</style></head><body>
+<h1>Shorts Studio</h1>
+<h2>1. Upload clips</h2>
+<input type="file" id="file" accept="video/*" multiple><button onclick="upload()">Upload</button>
+<h2>2. Pick clips</h2><div class="lib" id="lib"></div>
+<h2>3. Customize timeline</h2><div id="timeline"></div>
+<div class="row">Caption: <input id="caption" maxlength="100" size="40"></div>
+<h2>4. Export</h2>
+<button onclick="exportVideo()">Export MP4 (1080x1920)</button>
+<p id="status"></p><a id="dl" style="display:none">Download MP4</a>
+<script>
+let timeline=[];
+const $=id=>document.getElementById(id);
+async function loadLib(){
+  const names=await (await fetch('/api/clips')).json();
+  $('lib').innerHTML='';
+  names.forEach(n=>{
+    const d=document.createElement('div');d.className='card';
+    const v=document.createElement('video');v.src='/media/'+encodeURIComponent(n);v.muted=true;
+    const b=document.createElement('button');b.textContent='Add: '+n;
+    b.onclick=()=>{timeline.push({name:n,start:0,duration:5});draw()};
+    d.append(v,document.createElement('br'),b);$('lib').append(d);
+  });
+}
+function draw(){
+  $('timeline').innerHTML='';
+  timeline.forEach((c,i)=>{
+    const r=document.createElement('div');r.className='row';
+    r.append(c.name+' start ');
+    [['start'],['duration']].forEach(([k],j)=>{
+      if(j)r.append(' length ');
+      const inp=document.createElement('input');inp.type='number';inp.min=k=='start'?0:0.5;inp.step=0.5;inp.value=c[k];
+      inp.onchange=()=>c[k]=parseFloat(inp.value);r.append(inp);
+    });
+    const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.onclick=f;r.append(b)};
+    mk('↑',()=>{if(i){[timeline[i-1],timeline[i]]=[timeline[i],timeline[i-1]];draw()}});
+    mk('↓',()=>{if(i<timeline.length-1){[timeline[i+1],timeline[i]]=[timeline[i],timeline[i+1]];draw()}});
+    mk('Remove',()=>{timeline.splice(i,1);draw()});
+    $('timeline').append(r);
+  });
+}
+async function upload(){
+  for(const f of $('file').files){
+    $('status').textContent='Uploading '+f.name+'...';
+    const r=await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',body:f});
+    if(!r.ok){$('status').textContent='Upload failed: '+f.name;return}
+  }
+  $('status').textContent='Uploaded.';loadLib();
+}
+async function exportVideo(){
+  $('dl').style.display='none';$('status').textContent='Rendering...';
+  const r=await fetch('/api/export',{method:'POST',body:JSON.stringify({clips:timeline,caption:$('caption').value})});
+  const j=await r.json();
+  if(!r.ok){$('status').textContent='Error: '+j.error;return}
+  $('status').textContent='Done!';$('dl').href=j.url;$('dl').download='';$('dl').style.display='inline';
+}
+loadLib();
+</script></body></html>
